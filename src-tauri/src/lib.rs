@@ -24,10 +24,7 @@ pub use error::AppError;
 pub fn run() {
     let _guard = observability::init();
 
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "Codex Atlas starting"
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Codex Atlas starting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
