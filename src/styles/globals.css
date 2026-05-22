@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 reads design tokens from `@theme` blocks. The values below
+ * land in Phase 2 once we have a real design pass; for Phase 0 we only
+ * need the defaults plus a couple of brand colors.
+ */
+
+@theme {
+  --color-atlas-bg: #0b0d12;
+  --color-atlas-surface: #11141b;
+  --color-atlas-surface-2: #181c24;
+  --color-atlas-border: #232733;
+  --color-atlas-text: #e6e9ef;
+  --color-atlas-muted: #8a93a3;
+  --color-atlas-accent: #78a8ff;
+  --color-atlas-accent-2: #a78bfa;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular",
+    Menlo, Consolas, monospace;
+
+  --radius-card: 0.625rem;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-atlas-bg);
+  color: var(--color-atlas-text);
+  font-family: var(--font-sans);
+}
+
+/*
+ * Keep the native scrollbar visible. Plan §0 calls for an undergraduate-
+ * authentic UI, and that includes not hiding standard chrome.
+ */
+* {
+  scrollbar-color: var(--color-atlas-border) transparent;
+  scrollbar-width: thin;
+}
+
+/* Disable rubber-band overscroll in the Tauri window. */
+html, body {
+  overscroll-behavior: none;
+  user-select: none;
+}
+
+/* Reading content stays selectable. */
+input, textarea, [data-allow-select], code, pre {
+  user-select: text;
+}
