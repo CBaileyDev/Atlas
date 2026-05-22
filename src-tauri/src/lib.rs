@@ -33,6 +33,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ping::ping,
             commands::dumps::ingest_dump,
+            commands::search::list_dumps,
+            commands::search::open_dump,
+            commands::search::search_symbols,
+            commands::search::get_symbol,
+            commands::search::list_members,
         ])
         .setup(|_app| {
             tracing::info!("application setup complete");

@@ -19,6 +19,7 @@
 
 pub mod error;
 pub mod paths;
+pub mod search;
 pub mod storage;
 
 pub use error::{AtlasError, AtlasResult};

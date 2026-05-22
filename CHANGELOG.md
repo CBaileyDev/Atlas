@@ -19,6 +19,28 @@ All notable changes to Codex Atlas land here. Format loosely follows [Keep a Cha
 - `cargo fmt --check`: clean.
 - Re-ingest is idempotent (verified against the real fixture; 0 inserts on second run).
 
+## [0.2.0] — 2026-05-22
+
+### Added
+- Phase 2 — Browse + Search. End-to-end "open dump → fuzzy search → symbol detail" flow on a Tantivy 0.22 index.
+- `atlas-core::search::DumpIndex` with a per-dump Tantivy index, schema versioned via a `.schema-version` marker file (auto-rebuilds on mismatch). Fields: `id` (16-byte BLOB), `fqn` (TEXT + STORED), `name` (TEXT), `kind_i` (FAST + INDEXED + STORED), `module` (STRING + FAST + STORED), `parent_name` (TEXT). Free-text query is AND-combined with `SearchFacets { kinds, modules }`.
+- `atlas-core::search::lookup_symbol` for hydrating a hit into a full `SymbolRow`.
+- Tauri IPC commands: `list_dumps`, `open_dump` (idempotently builds the index), `search_symbols`, `get_symbol`, `list_members`.
+- React Browse route (`src/routes/browse.tsx`) wired to the new commands: dump selector, kind + module facets, debounced search input, hit list with selection, symbol detail panel with size/offset/vtable + member table.
+- `src/ipc/client.ts` and `src/ipc/types.ts` extended with the full search surface.
+
+### Acceptance gate (plan §8 partial — see TASKS.md for deferred items)
+- `cargo test --workspace`: **44 tests** pass (added 3 search tests in `atlas-core`).
+- `cargo clippy --workspace -- -D warnings`: clean.
+- `pnpm typecheck`, `pnpm test`, `pnpm build`: clean.
+
+### Deferred to TASKS.md
+- Virtualized table (current flat render is fine at 200-row limit but doesn't future-proof).
+- Cmd-K command palette (the inline search input covers the data path).
+- Type-ref hyperlinks in the detail panel.
+- Keyboard navigation (↑/↓/Enter/Esc) in the hit list.
+- Cross-reload state persistence via Zustand.
+
 ## [Unreleased]
 
 ### Added

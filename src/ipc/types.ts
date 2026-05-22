@@ -1,10 +1,5 @@
 /**
- * Hand-written IPC types for Phase 0. Once we wire ts-rs in Phase 1,
- * this file will be replaced by a generated bindings file. The
- * `// @generated` marker below tells reviewers and the linter to stop
- * looking here for handwritten changes once that switch happens.
- *
- * @generated:false
+ * Hand-written IPC types. ts-rs generation is on the Phase 3+ roadmap.
  */
 
 export interface PingResponse {
@@ -12,6 +7,83 @@ export interface PingResponse {
   echoed: string | null;
   timestamp: string;
   version: string;
+}
+
+// ---- Dumps + ingest ------------------------------------------------------
+
+export interface DumpListItem {
+  id: number;
+  game_id: string;
+  game_version: string;
+  parser: string;
+  symbol_count: number;
+  ingested_at: string;
+}
+
+export interface OpenDumpInfo {
+  id: number;
+  game_id: string;
+  game_version: string;
+  symbol_count: number;
+  modules: string[];
+}
+
+export interface IngestReport {
+  dump_id: number;
+  game_id: string;
+  game_version: string;
+  parser: string;
+  symbols_inserted: number;
+  symbols_skipped: number;
+  relations_inserted: number;
+  relations_skipped: number;
+  warnings: string[];
+}
+
+// ---- Search --------------------------------------------------------------
+
+export interface SearchHit {
+  id_hex: string;
+  fqn: string;
+  kind_i: number;
+  module: string;
+  score: number;
+}
+
+export interface SearchResult {
+  query: string;
+  total_matched: number;
+  hits: SearchHit[];
+}
+
+export const SYMBOL_KIND_LABEL: Record<number, string> = {
+  0: "module",
+  1: "class",
+  2: "struct",
+  3: "enum",
+  4: "enum value",
+  5: "function",
+  6: "field",
+  7: "parameter",
+};
+
+// ---- Symbol detail -------------------------------------------------------
+
+export interface SymbolRow {
+  id: number[]; // bytes
+  dump_id: number;
+  fqn: string;
+  name: string;
+  kind: number;
+  module: string;
+  size: number | null;
+  align: number | null;
+  offset: number | null;
+  vtable_slot: number | null;
+  type_ref_json: string | null;
+  flags: number;
+  source_file: string | null;
+  source_line: number | null;
 }
 
 /**

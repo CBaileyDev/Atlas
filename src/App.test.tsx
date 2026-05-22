@@ -12,6 +12,22 @@ vi.mock("@/ipc/client", async () => {
       timestamp: "2026-01-01T00:00:00Z",
       version: "0.0.0",
     })),
+    listDumps: vi.fn(async () => []),
+    openDump: vi.fn(async () => ({
+      id: 0,
+      game_id: "test",
+      game_version: "0",
+      symbol_count: 0,
+      modules: [],
+    })),
+    searchSymbols: vi.fn(async () => ({
+      query: "",
+      total_matched: 0,
+      hits: [],
+    })),
+    getSymbol: vi.fn(async () => null),
+    listMembers: vi.fn(async () => []),
+    ingestDump: vi.fn(),
   };
 });
 

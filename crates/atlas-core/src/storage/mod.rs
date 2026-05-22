@@ -23,7 +23,12 @@ use crate::error::{AtlasError, AtlasResult};
 /// single-process, so we don't need a pool; a single connection with WAL
 /// mode handles our concurrency comfortably.
 pub struct Db {
-    pub(crate) conn: Connection,
+    /// Public so the Tauri command layer in `src-tauri` can issue
+    /// project-specific queries without having to wrap every shape
+    /// in a method here. Plan §3 invariant 5 (UI never opens SQLite)
+    /// still holds — the **frontend** stays behind the IPC boundary;
+    /// this exposure is only visible to other Rust crates.
+    pub conn: Connection,
 }
 
 impl Db {
