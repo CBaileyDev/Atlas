@@ -6,6 +6,7 @@
 
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
+  Diff,
   DumpListItem,
   IngestReport,
   OpenDumpInfo,
@@ -63,4 +64,15 @@ export function getSymbol(idHex: string): Promise<SymbolRow | null> {
 /** List the contained members of a class/struct/enum. */
 export function listMembers(classIdHex: string): Promise<SymbolRow[]> {
   return invoke<SymbolRow[]>("list_members", { classIdHex });
+}
+
+/** Compute a structural diff between two dumps. */
+export function diffDumps(args: {
+  baseDumpId: number;
+  headDumpId: number;
+}): Promise<Diff> {
+  return invoke<Diff>("diff_dumps", {
+    baseDumpId: args.baseDumpId,
+    headDumpId: args.headDumpId,
+  });
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ping } from "@/ipc/client";
 import type { PingResponse } from "@/ipc/types";
 import BrowseRoute from "@/routes/browse";
+import DiffRoute from "@/routes/diff";
 
 type ConnState =
   | { status: "idle" }
@@ -120,7 +121,7 @@ function RouteView({ tab }: { tab: Tab }) {
     case "browse":
       return <BrowseRoute />;
     case "diff":
-      return <PlaceholderRoute title="Diff" body="Diff engine lands in Phase 3." />;
+      return <DiffRoute />;
     case "export":
       return <PlaceholderRoute title="Export" body="Export builder lands in Phase 4." />;
     case "settings":

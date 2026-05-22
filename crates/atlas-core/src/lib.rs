@@ -17,6 +17,7 @@
 //!
 //! Everything else (ingest, diff, search, export) lands in later phases.
 
+pub mod diff;
 pub mod error;
 pub mod paths;
 pub mod search;

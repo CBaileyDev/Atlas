@@ -67,6 +67,79 @@ export const SYMBOL_KIND_LABEL: Record<number, string> = {
   7: "parameter",
 };
 
+// ---- Diff ---------------------------------------------------------------
+
+export interface SymbolRef {
+  fqn: string;
+  kind: number;
+  module: string;
+}
+
+export type MatchMethod = "exact" | "fingerprint" | "user_override";
+
+export interface SymbolMatch {
+  base: SymbolRef;
+  head: SymbolRef;
+  method: MatchMethod;
+  score: number;
+}
+
+export interface RenameSuggestion {
+  base: SymbolRef;
+  head: SymbolRef;
+  score: number;
+}
+
+export type ChangeKind =
+  | {
+      kind: "offset_changed";
+      field: string;
+      old_offset: number;
+      new_offset: number;
+    }
+  | { kind: "size_changed"; field: string; old_size: number; new_size: number }
+  | {
+      kind: "vtable_shift";
+      fn_name: string;
+      old_slot: number;
+      new_slot: number;
+    }
+  | {
+      kind: "parent_class_changed";
+      old_parent: string | null;
+      new_parent: string | null;
+    }
+  | { kind: "field_added"; field: string }
+  | { kind: "field_removed"; field: string }
+  | {
+      kind: "function_signature_changed";
+      fn_name: string;
+      old_return: string | null;
+      new_return: string | null;
+    }
+  | {
+      kind: "field_type_substituted";
+      field: string;
+      old_type: string;
+      new_type: string;
+    };
+
+export interface FieldChange {
+  parent_fqn: string;
+  change: ChangeKind;
+}
+
+export interface Diff {
+  game_id: string;
+  base_version: string;
+  head_version: string;
+  matches: SymbolMatch[];
+  added: SymbolRef[];
+  removed: SymbolRef[];
+  renamed_suggestions: RenameSuggestion[];
+  field_changes: FieldChange[];
+}
+
 // ---- Symbol detail -------------------------------------------------------
 
 export interface SymbolRow {

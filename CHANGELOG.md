@@ -41,6 +41,32 @@ All notable changes to Codex Atlas land here. Format loosely follows [Keep a Cha
 - Keyboard navigation (↑/↓/Enter/Esc) in the hit list.
 - Cross-reload state persistence via Zustand.
 
+## [0.3.0] — 2026-05-22
+
+### Added
+- Phase 3 — Diff engine. Pure-function structural diff between two `SymbolGraph`s of the same game (plan §9 invariant 3).
+- `atlas-core::diff::diff(base, head, config, overrides) -> Diff` with the three documented passes:
+  - Pass 1: exact match by `(kind, fqn)`.
+  - Pass 2: fingerprint rename detection (Jaccard on member names + types, scaled by same-module / same-parent bonuses, padding fields filtered out via `fingerprint_ignore_prefixes`).
+  - Pass 3: field-level classification — `OffsetChanged`, `SizeChanged`, `VtableShift`, `ParentClassChanged`, `FieldAdded`, `FieldRemoved`, `FunctionSignatureChanged`, `FieldTypeSubstituted`.
+- `DiffConfig` with the plan's documented defaults (0.70 suggestion / 0.90 confidence thresholds, 0.6 name / 0.3 type / +0.1 module weights).
+- `RenameOverride` with `Decision::Match` / `Decision::Reject` — `Match` short-circuits scoring, `Reject` excludes the pair from suggestions.
+- 10 diff unit tests covering all seven change categories plus override behavior and JSON round-trip.
+- IPC commands `diff_dumps` and `diff_dumps_with_overrides`, both running on `spawn_blocking`. Dumps are rehydrated from SQLite into `SymbolGraph` (avoids re-parsing the SDK every diff).
+- React Diff route with base/head selectors, filter chips for matches / added / removed / renamed / fields, and a flat change list that decodes `ChangeKind` to readable lines.
+
+### Acceptance gate (plan §9 — partial; deferred items in TASKS.md)
+- 54 workspace tests pass. `cargo clippy --workspace -- -D warnings` clean. `pnpm typecheck/test/build` clean.
+- All seven change categories covered by unit tests against the synthetic v1/v2 fixtures.
+- Diff output round-trips through JSON.
+
+### Deferred to TASKS.md
+- `insta` snapshot files (current behavior is asserted with field-by-field unit tests; snapshots are nice-to-have).
+- `cargo bench` for diff against real-fixture-scale dumps.
+- Side-by-side detail panel for matched pairs.
+- Inline rename Confirm/Reject UI (the IPC command + `RenameOverride` shape are ready).
+- Diff JSON caching at `diffs/<base>-<head>.json`.
+
 ## [Unreleased]
 
 ### Added

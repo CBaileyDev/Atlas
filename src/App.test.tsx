@@ -28,6 +28,16 @@ vi.mock("@/ipc/client", async () => {
     getSymbol: vi.fn(async () => null),
     listMembers: vi.fn(async () => []),
     ingestDump: vi.fn(),
+    diffDumps: vi.fn(async () => ({
+      game_id: "",
+      base_version: "",
+      head_version: "",
+      matches: [],
+      added: [],
+      removed: [],
+      renamed_suggestions: [],
+      field_changes: [],
+    })),
   };
 });
 
