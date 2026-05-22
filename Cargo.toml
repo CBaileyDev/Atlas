@@ -5,7 +5,7 @@ members = [
     "crates/atlas-parser-trait",
     "crates/atlas-parser-ue",
     "crates/atlas-parser-unity",
-    # "src-tauri" is added in Phase 0.3 once the Tauri shell exists.
+    "src-tauri",
 ]
 
 [workspace.package]
