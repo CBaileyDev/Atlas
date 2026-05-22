@@ -637,6 +637,7 @@ dependencies = [
  "anyhow",
  "atlas-core",
  "atlas-parser-trait",
+ "atlas-parser-ue",
  "chrono",
  "serde",
  "serde_json",
