@@ -38,6 +38,8 @@ pub fn run() {
             commands::search::search_symbols,
             commands::search::get_symbol,
             commands::search::list_members,
+            commands::diff::diff_dumps,
+            commands::diff::diff_dumps_with_overrides,
         ])
         .setup(|_app| {
             tracing::info!("application setup complete");

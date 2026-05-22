@@ -36,6 +36,20 @@ Format: one line per deferred task. Add a phase tag and a one-sentence reason. R
 - `[Phase 2]` Keyboard navigation in the hit list (↑/↓/Enter/Esc).
 - `[Phase 2]` Zustand store wiring: persist last selected dump,
   query, and symbol across reloads.
+- `[Phase 3]` `insta` snapshot files for the diff engine (the unit
+  tests assert specific field changes today; snapshots would freeze
+  the full output shape).
+- `[Phase 3]` `cargo bench` for diff against real-fixture-scale
+  inputs (plan §12.2 budget: <10 s for two 200k-symbol dumps).
+- `[Phase 3]` Side-by-side detail panel for matched pairs — the
+  current flat change list is functional but doesn't put base and
+  head fields next to each other for visual comparison.
+- `[Phase 3]` Inline rename Confirm/Reject buttons on suggestions.
+  The IPC command (`diff_dumps_with_overrides`) and `RenameOverride`
+  schema are ready; this is purely UI plumbing plus a `rename_overrides`
+  insert on confirm.
+- `[Phase 3]` Persist computed diffs to `diffs/<base>-<head>.json`
+  so re-opening is cheap.
 
 ## Conventions
 
