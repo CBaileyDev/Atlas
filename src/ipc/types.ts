@@ -140,6 +140,35 @@ export interface Diff {
   field_changes: FieldChange[];
 }
 
+// ---- Export -------------------------------------------------------------
+
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  default_filename: string;
+  overridden: boolean;
+}
+
+export interface ResolvedSymbol {
+  fqn: string;
+  id_hex: string | null;
+  kind_i: number | null;
+}
+
+export interface ExportRequest {
+  dump_id: number;
+  symbol_ids_hex: string[];
+  template_name: string;
+  project_name: string;
+  trainer_class_name: string;
+  process_name: string;
+}
+
+export interface WriteResult {
+  rendered_path: string;
+  sidecar_path: string;
+}
+
 // ---- Symbol detail -------------------------------------------------------
 
 export interface SymbolRow {

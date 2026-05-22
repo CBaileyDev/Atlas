@@ -3,6 +3,7 @@ import { ping } from "@/ipc/client";
 import type { PingResponse } from "@/ipc/types";
 import BrowseRoute from "@/routes/browse";
 import DiffRoute from "@/routes/diff";
+import ExportRoute from "@/routes/export";
 
 type ConnState =
   | { status: "idle" }
@@ -123,7 +124,7 @@ function RouteView({ tab }: { tab: Tab }) {
     case "diff":
       return <DiffRoute />;
     case "export":
-      return <PlaceholderRoute title="Export" body="Export builder lands in Phase 4." />;
+      return <ExportRoute />;
     case "settings":
       return <PlaceholderRoute title="Settings" body="Settings land in Phase 5." />;
   }

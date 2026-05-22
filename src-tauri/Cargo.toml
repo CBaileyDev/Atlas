@@ -23,6 +23,7 @@ tauri-build = { workspace = true }
 atlas-core = { workspace = true }
 atlas-parser-trait = { workspace = true }
 atlas-parser-ue = { workspace = true }
+rusqlite = { workspace = true }
 
 tauri = { workspace = true, features = ["devtools"] }
 tauri-plugin-dialog = { workspace = true }

@@ -1,0 +1,11 @@
+# Codex Atlas sigscan placeholders
+# game: {{ game_id }} {{ game_version }}  dump: {{ dump_id }}
+# generated: {{ generated_at }}
+#
+# Each line is:  <symbol_fqn>\t<placeholder_bytes>
+# Replace the placeholder with the real signature pattern from your RE pass.
+{%- for s in symbols %}
+{%- if s.kind == "class" or s.kind == "struct" or s.kind == "function" %}
+{{ s.fqn }}	?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ??
+{%- endif %}
+{%- endfor %}

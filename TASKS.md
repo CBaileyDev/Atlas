@@ -50,6 +50,17 @@ Format: one line per deferred task. Add a phase tag and a one-sentence reason. R
   insert on confirm.
 - `[Phase 3]` Persist computed diffs to `diffs/<base>-<head>.json`
   so re-opening is cheap.
+- `[Phase 4]` Selection-rules transitive closure: `include_parents`
+  and `type_depth` are part of the `Selection` schema but the
+  `build_context` resolver doesn't yet expand them. UI passes
+  defaults today.
+- `[Phase 4]` Right-click "Copy as…" submenu in the Browse route —
+  hook the Snippet templates (IDA, sigscan, csharp_struct,
+  cheat_engine_chain) onto the symbol-detail context menu.
+- `[Phase 4]` `Snippets/csharp_struct.tera` and
+  `Snippets/cheat_engine_chain.tera` aren't authored yet.
+- `[Phase 4]` Optional `dotnet build` compile-check for the
+  rendered C# trainer in CI (plan §10 acceptance, marked optional).
 
 ## Conventions
 

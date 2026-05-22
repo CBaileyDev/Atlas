@@ -40,6 +40,10 @@ pub fn run() {
             commands::search::list_members,
             commands::diff::diff_dumps,
             commands::diff::diff_dumps_with_overrides,
+            commands::export::list_templates,
+            commands::export::resolve_fqns,
+            commands::export::render_export_preview,
+            commands::export::write_export,
         ])
         .setup(|_app| {
             tracing::info!("application setup complete");
