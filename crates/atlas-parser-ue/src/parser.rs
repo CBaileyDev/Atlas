@@ -6,24 +6,21 @@
 
 //! Recursive-descent parser for Dumper-7-style header files.
 //!
-//! Grammar (informal, simplified):
-//!
-//! ```text
-//! file        := { topLevel }
-//! topLevel    := namespace | classDecl | structDecl | enumDecl | other
-//! namespace   := "namespace" Ident "{" { topLevel } "}"
-//! classDecl   := "class"  Ident [ ":" "public" Ident ] "{" body "}" ";"
-//! structDecl  := "struct" Ident [ ":" "public" Ident ] "{" body "}" ";"
-//! enumDecl    := "enum" "class" Ident [ ":" Ident ] "{" enumBody "}" ";"
-//! body        := { accessLabel | field | method | nested-typedef | other }
-//! field       := type Ident [ "[" Number "]" ] ";"   followed-by-comment-with-offset
-//! method      := "virtual"? type Ident "(" params ")" ("const")? ";"  followed-by-vtable-comment
-//! ```
-//!
-//! The parser is intentionally line-oriented inside class bodies: after
-//! a `field` or `method` declaration, we expect a `// 0xNNNN(0xNNNN)`
-//! or `// [0xNN] (Virtual)` comment on the same logical token line.
-//! That comment carries the offset, size, and vtable slot.
+//! Format invariants (see lib.rs for the full sketch):
+//! - All content sits inside `namespace SDK { ... }` or
+//!   `namespace SDK::Params { ... }` — the wrapper is **not** a prefix.
+//! - Declarations are preceded by a one-line FQN header comment:
+//!   `// Class Engine.Actor`
+//!   `// Enum CoreUObject.EObjectFlags`
+//!   `// ScriptStruct CoreUObject.Vector`
+//!   `// Function Engine.Actor.K2_DestroyActor`
+//! - Class declarations may carry `final` and/or `alignas(N)`.
+//! - Field types frequently use `class FName` / `struct FOO` as a
+//!   forward-declaration prefix — both are skipped during type reading.
+//! - Method declarations can have an inline body (`{ STATIC_CLASS_IMPL(...) }`)
+//!   which we skip; we only need the signature.
+//! - Top-level `DUMPER7_ASSERTS_X;` lines are static_assert macro
+//!   invocations and are ignored.
 
 use atlas_parser_trait::{
     Relation, RelationKind, SourceLoc, Symbol, SymbolFlags, SymbolKind, TypeModifiers, TypeRef,
@@ -32,19 +29,39 @@ use std::collections::HashMap;
 
 use crate::lexer::{Token, TokenKind};
 
+#[derive(Debug, Clone)]
+struct DeclHeader {
+    /// `"Class"`, `"ScriptStruct"`, `"Struct"`, `"Enum"`, `"Function"`.
+    kind: &'static str,
+    fqn: String,
+}
+
+fn parse_decl_comment(text: &str) -> Option<DeclHeader> {
+    for kind in ["Class", "ScriptStruct", "Struct", "Enum", "Function"] {
+        let prefix = format!("{kind} ");
+        if let Some(rest) = text.strip_prefix(&prefix) {
+            let fqn = rest.split_whitespace().next().unwrap_or("").to_string();
+            if !fqn.is_empty() && fqn.contains('.') {
+                return Some(DeclHeader { kind, fqn });
+            }
+        }
+    }
+    None
+}
+
 /// Accumulator passed across files. Each parsed file appends to it.
 #[derive(Debug, Default)]
 pub(crate) struct GraphBuilder {
     pub symbols: Vec<Symbol>,
     pub relations: Vec<Relation>,
     next_id: u32,
-    /// Map from fully qualified name -> local_id, used to resolve type
-    /// references after all files have been parsed.
     fqn_index: HashMap<String, u32>,
-    /// Pending "unresolved" type-ref fixups: (symbol_idx, child indicator)
-    /// recorded so the resolve pass can convert Unresolved → Local when
-    /// a matching name appears.
+    short_name_index: HashMap<String, u32>,
+    /// Per-graph file-local symbol indices for type resolution.
     pending_type_resolutions: Vec<usize>,
+    /// Per-file "I saw this class with an unresolved parent name" log,
+    /// resolved at the end of the graph.
+    pending_parents: Vec<(u32, String)>,
 }
 
 impl GraphBuilder {
@@ -61,6 +78,20 @@ impl GraphBuilder {
     fn push_symbol(&mut self, sym: Symbol) -> u32 {
         let id = sym.local_id;
         self.fqn_index.insert(sym.fqn.clone(), id);
+        if matches!(
+            sym.kind,
+            SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
+        ) {
+            // For type-ref resolution we also key by the *source* short
+            // name (e.g. UAActor) and by the *canonical* short name
+            // from the FQN (e.g. Actor). We prefer not to overwrite if
+            // there's a collision — first-seen wins. The diff engine
+            // can disambiguate via FQN if it matters.
+            self.short_name_index.entry(sym.name.clone()).or_insert(id);
+            if let Some(short) = sym.fqn.rsplit_once('.').map(|(_, s)| s.to_string()) {
+                self.short_name_index.entry(short).or_insert(id);
+            }
+        }
         if sym.type_ref.is_some() {
             self.pending_type_resolutions.push(self.symbols.len());
         }
@@ -72,35 +103,33 @@ impl GraphBuilder {
         self.relations.push(Relation { from, to, kind });
     }
 
-    /// Convert `Unresolved { name }` refs into `Local { local_id }` when
-    /// a symbol with a matching name (or fqn) exists. Builtins are left
-    /// alone. Called after every file has been parsed.
     pub fn resolve_references(&mut self) {
+        // 1) Resolve pending parents recorded during class parsing.
+        let pending = std::mem::take(&mut self.pending_parents);
+        for (child_id, parent_name) in pending {
+            if let Some(&parent_id) = self.short_name_index.get(&parent_name) {
+                self.relations.push(Relation {
+                    from: child_id,
+                    to: parent_id,
+                    kind: RelationKind::Inherits,
+                });
+            }
+            // Silently drop unresolved parents; the diff engine can
+            // surface external-type references later.
+        }
+
+        // 2) Walk every pending type_ref and resolve Unresolved -> Local.
         let indices = std::mem::take(&mut self.pending_type_resolutions);
         for idx in indices {
             let sym = &mut self.symbols[idx];
             let Some(tref) = sym.type_ref.take() else {
                 continue;
             };
-            let resolved = resolve_type_ref(tref, &self.fqn_index);
+            let resolved = resolve_type_ref(tref, &self.short_name_index);
             sym.type_ref = Some(resolved);
         }
 
-        // Build a quick lookup by short name so we can also tag
-        // `OfType` relations.
-        let by_short: HashMap<String, u32> = self
-            .symbols
-            .iter()
-            .filter(|s| {
-                matches!(
-                    s.kind,
-                    SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
-                )
-            })
-            .map(|s| (s.name.clone(), s.local_id))
-            .collect();
-
-        // Also tag OfType relations for resolved Local refs.
+        // 3) Tag OfType relations for resolved Local refs.
         let mut to_add = Vec::new();
         for sym in &self.symbols {
             if let Some(TypeRef::Local { local_id, .. }) = &sym.type_ref {
@@ -109,17 +138,6 @@ impl GraphBuilder {
                     to: *local_id,
                     kind: RelationKind::OfType,
                 });
-            } else if let Some(TypeRef::Unresolved { name, .. }) = &sym.type_ref {
-                // One more attempt against the short-name index — picks
-                // up cases where the field type was written without the
-                // module prefix.
-                if let Some(&id) = by_short.get(name) {
-                    to_add.push(Relation {
-                        from: sym.local_id,
-                        to: id,
-                        kind: RelationKind::OfType,
-                    });
-                }
             }
         }
         self.relations.extend(to_add);
@@ -129,7 +147,6 @@ impl GraphBuilder {
 fn resolve_type_ref(tref: TypeRef, index: &HashMap<String, u32>) -> TypeRef {
     match tref {
         TypeRef::Unresolved { name, modifiers } => {
-            // First try as full FQN, then as bare name.
             if let Some(&id) = index.get(&name) {
                 TypeRef::Local {
                     local_id: id,
@@ -166,17 +183,25 @@ fn resolve_modifiers(mut m: TypeModifiers, index: &HashMap<String, u32>) -> Type
 }
 
 // ---------------------------------------------------------------------------
-// Cursor — a tiny token-stream helper.
+// Cursor
 // ---------------------------------------------------------------------------
 
 struct Cursor<'a> {
     tokens: &'a [Token],
     pos: usize,
+    /// Most-recent declaration-header comment (e.g.
+    /// `// Class Engine.Actor`). Consumed by parse_class_or_struct,
+    /// parse_enum, etc.
+    pending_decl: Option<DeclHeader>,
 }
 
 impl<'a> Cursor<'a> {
     fn new(tokens: &'a [Token]) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            pending_decl: None,
+        }
     }
 
     fn peek(&self) -> Option<&'a Token> {
@@ -189,10 +214,28 @@ impl<'a> Cursor<'a> {
 
     fn advance(&mut self) -> Option<&'a Token> {
         let t = self.tokens.get(self.pos);
-        if t.is_some() {
+        if let Some(tt) = t {
+            if tt.kind == TokenKind::Comment {
+                if let Some(h) = parse_decl_comment(&tt.text) {
+                    self.pending_decl = Some(h);
+                }
+            }
             self.pos += 1;
         }
         t
+    }
+
+    fn take_pending_decl_for(&mut self, kind: &str) -> Option<DeclHeader> {
+        if let Some(h) = &self.pending_decl {
+            if h.kind == kind
+                || (kind == "Class" && h.kind == "Class")
+                || (kind == "Struct" && (h.kind == "Struct" || h.kind == "ScriptStruct"))
+                || (kind == "Enum" && h.kind == "Enum")
+            {
+                return self.pending_decl.take();
+            }
+        }
+        None
     }
 
     fn at_ident(&self, text: &str) -> bool {
@@ -226,19 +269,18 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Skip forward until the matched balanced `(` `)` or `{` `}` is
-    /// closed. Position lands one past the closer. Used to skip over
-    /// function bodies and template-arg lists we don't care about.
     fn skip_balanced(&mut self, open: char, close: char) {
-        let mut depth: i32 = 0;
         if !self.at_punct(open) {
             return;
         }
+        let mut depth: i32 = 0;
+        let open_s = open.to_string();
+        let close_s = close.to_string();
         while let Some(t) = self.peek() {
             if t.kind == TokenKind::Punct {
-                if t.text == open.to_string() {
+                if t.text == open_s {
                     depth += 1;
-                } else if t.text == close.to_string() {
+                } else if t.text == close_s {
                     depth -= 1;
                     if depth == 0 {
                         self.advance();
@@ -252,10 +294,10 @@ impl<'a> Cursor<'a> {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level entry point.
+// Top-level
 // ---------------------------------------------------------------------------
 
-pub(crate) fn parse_module(
+pub(crate) fn parse_file(
     module: &str,
     file: &str,
     tokens: &[Token],
@@ -264,43 +306,48 @@ pub(crate) fn parse_module(
     let mut cur = Cursor::new(tokens);
     let mut warnings = 0u64;
 
-    // Make sure the module symbol itself exists.
-    let module_id = builder.alloc_id();
-    builder.push_symbol(Symbol {
-        local_id: module_id,
-        fqn: module.to_string(),
-        name: module.to_string(),
-        kind: SymbolKind::Module,
-        module: module.to_string(),
-        size: None,
-        align: None,
-        offset: None,
-        vtable_slot: None,
-        type_ref: None,
-        flags: SymbolFlags::default(),
-        source_loc: Some(SourceLoc {
-            file: file.to_string(),
-            line: 1,
-        }),
-    });
+    // Ensure the module symbol exists once across the whole graph.
+    if !builder.fqn_index.contains_key(module) {
+        let id = builder.alloc_id();
+        builder.push_symbol(Symbol {
+            local_id: id,
+            fqn: module.to_string(),
+            name: module.to_string(),
+            kind: SymbolKind::Module,
+            module: module.to_string(),
+            size: None,
+            align: None,
+            offset: None,
+            vtable_slot: None,
+            type_ref: None,
+            flags: SymbolFlags::default(),
+            source_loc: Some(SourceLoc {
+                file: file.to_string(),
+                line: 1,
+            }),
+        });
+    }
 
-    parse_until_brace_or_eof(&mut cur, module, file, module_id, builder, &mut warnings);
-
-    builder.resolve_references();
+    walk(&mut cur, module, file, builder, &mut warnings);
     Ok(warnings)
 }
 
-/// Walk tokens at the top of a file or inside a `namespace { ... }`.
-/// Stops at end-of-input or when a `}` closes the surrounding scope.
-fn parse_until_brace_or_eof(
+fn module_id(builder: &GraphBuilder, module: &str) -> u32 {
+    *builder
+        .fqn_index
+        .get(module)
+        .expect("module symbol pushed at file start")
+}
+
+/// Walk top-level statements until end-of-input or a matching `}`.
+fn walk(
     cur: &mut Cursor,
     module: &str,
     file: &str,
-    parent_id: u32,
     builder: &mut GraphBuilder,
     warnings: &mut u64,
 ) {
-    while let Some(t) = cur.peek() {
+    while let Some(t) = cur.peek().cloned() {
         if t.kind == TokenKind::Punct && t.text == "}" {
             return;
         }
@@ -311,50 +358,77 @@ fn parse_until_brace_or_eof(
         if t.kind == TokenKind::Ident {
             match t.text.as_str() {
                 "namespace" => {
-                    cur.advance();
-                    let name = cur
-                        .peek()
-                        .filter(|n| n.kind == TokenKind::Ident)
-                        .map(|n| n.text.clone());
-                    if let Some(_n) = name {
-                        cur.advance();
-                    }
-                    if cur.eat_punct('{') {
-                        // We treat the namespace name as part of the
-                        // FQN if it equals the module, otherwise as a
-                        // sub-prefix. For Phase 1 we only flatten one
-                        // level — Dumper-7 wraps each module in one
-                        // namespace whose name matches the file.
-                        parse_until_brace_or_eof(cur, module, file, parent_id, builder, warnings);
-                        cur.eat_punct('}');
-                        cur.eat_punct(';');
-                    }
+                    consume_namespace(cur, module, file, builder, warnings);
                     continue;
                 }
-                "class" | "struct" => {
-                    let is_class = t.text == "class";
-                    parse_class_or_struct(
-                        cur, module, file, is_class, parent_id, builder, warnings,
-                    );
+                "class" => {
+                    parse_class_or_struct(cur, module, file, true, builder, warnings);
+                    continue;
+                }
+                "struct" => {
+                    parse_class_or_struct(cur, module, file, false, builder, warnings);
                     continue;
                 }
                 "enum" => {
-                    parse_enum(cur, module, file, parent_id, builder, warnings);
+                    parse_enum(cur, module, file, builder, warnings);
                     continue;
                 }
                 "template" | "typedef" | "using" => {
-                    // Skip these top-level constructs entirely. Find ';' or '{...};'
                     cur.advance();
                     skip_until_semi_or_braced(cur);
                     continue;
                 }
-                _ => {
+                "constexpr" | "static" | "inline" | "extern" => {
+                    // Top-level constants / aliases — skip the whole statement.
+                    skip_until_semi_or_braced(cur);
+                    continue;
+                }
+                other => {
+                    // `IDENT;` at top level is a macro invocation
+                    // (DUMPER7_ASSERTS_X, STATIC_CLASS_IMPL, etc.).
+                    if cur.peek_at(1).map(|n| n.text.as_str()) == Some(";") {
+                        cur.advance();
+                        cur.advance();
+                        continue;
+                    }
+                    // Unrecognized — skip one token.
+                    let _ = other;
                     cur.advance();
                     continue;
                 }
             }
         }
         cur.advance();
+    }
+}
+
+fn consume_namespace(
+    cur: &mut Cursor,
+    module: &str,
+    file: &str,
+    builder: &mut GraphBuilder,
+    warnings: &mut u64,
+) {
+    cur.advance(); // 'namespace'
+                   // Eat dotted/scoped name: Ident (:: Ident)*
+    loop {
+        if let Some(t) = cur.peek().cloned() {
+            if t.kind == TokenKind::Ident {
+                cur.advance();
+                if cur.at_punct(':') && cur.peek_at(1).map(|n| n.text.as_str()) == Some(":") {
+                    cur.advance();
+                    cur.advance();
+                    continue;
+                }
+                break;
+            }
+        }
+        break;
+    }
+    if cur.eat_punct('{') {
+        walk(cur, module, file, builder, warnings);
+        cur.eat_punct('}');
+        cur.eat_punct(';');
     }
 }
 
@@ -371,10 +445,8 @@ fn skip_until_semi_or_braced(cur: &mut Cursor) {
                     cur.eat_punct(';');
                     return;
                 }
-                _ => {
-                    cur.advance();
-                }
-            }
+                _ => cur.advance(),
+            };
         } else {
             cur.advance();
         }
@@ -382,7 +454,7 @@ fn skip_until_semi_or_braced(cur: &mut Cursor) {
 }
 
 // ---------------------------------------------------------------------------
-// Class / struct declaration
+// Class / struct
 // ---------------------------------------------------------------------------
 
 fn parse_class_or_struct(
@@ -390,12 +462,20 @@ fn parse_class_or_struct(
     module: &str,
     file: &str,
     is_class: bool,
-    parent_id: u32,
     builder: &mut GraphBuilder,
     warnings: &mut u64,
 ) {
     let header_line = cur.peek().map_or(0, |t| t.line);
-    cur.advance(); // consume `class`/`struct`
+    let mod_id = module_id(builder, module);
+    cur.advance(); // class/struct
+
+    // Optional `alignas(N)`
+    if cur.at_ident("alignas") {
+        cur.advance();
+        if cur.at_punct('(') {
+            cur.skip_balanced('(', ')');
+        }
+    }
 
     // Type name
     let Some(name_tok) = cur.peek().cloned() else {
@@ -407,45 +487,68 @@ fn parse_class_or_struct(
         return;
     }
     cur.advance();
-    let name = name_tok.text;
+    let source_name = name_tok.text;
 
-    // Optional `: public Parent`
+    // Optional `final`
+    let _ = cur.eat_ident("final");
+
+    // Optional `: public Parent` (we ignore multi-inheritance)
     let mut parent_name: Option<String> = None;
     if cur.eat_punct(':') {
-        // skip access specifier (public/private/protected) if present
         let _ = cur.eat_ident("public") || cur.eat_ident("private") || cur.eat_ident("protected");
-        if let Some(pt) = cur.peek() {
+        let _ = cur.eat_ident("virtual"); // `virtual public`
+                                          // Type name (possibly with `class`/`struct` prefix)
+        let _ = cur.eat_ident("class") || cur.eat_ident("struct");
+        if let Some(pt) = cur.peek().cloned() {
             if pt.kind == TokenKind::Ident {
                 parent_name = Some(pt.text.clone());
                 cur.advance();
+                // Eat any template args on the parent type.
+                if cur.at_punct('<') {
+                    cur.skip_balanced('<', '>');
+                }
             }
         }
     }
 
-    // Forward decl: `class Foo;`
+    // Forward declaration: `class X;`
     if cur.eat_punct(';') {
+        // Consume the pending header if present so we don't carry it.
+        let _ = if is_class {
+            cur.take_pending_decl_for("Class")
+        } else {
+            cur.take_pending_decl_for("Struct")
+        };
         return;
     }
 
     if !cur.eat_punct('{') {
-        // Unexpected — skip to next ';' to recover.
         *warnings += 1;
         skip_until_semi_or_braced(cur);
         return;
     }
 
-    // Allocate the symbol now so its members can point to it.
+    let pending = if is_class {
+        cur.take_pending_decl_for("Class")
+    } else {
+        cur.take_pending_decl_for("Struct")
+    };
+    let fqn = pending
+        .as_ref()
+        .map(|h| h.fqn.clone())
+        .unwrap_or_else(|| format!("{module}.{source_name}"));
+
+    // Allocate the symbol.
     let kind = if is_class {
         SymbolKind::Class
     } else {
         SymbolKind::Struct
     };
     let class_id = builder.alloc_id();
-    let fqn = format!("{module}.{name}");
     builder.push_symbol(Symbol {
         local_id: class_id,
-        fqn: fqn.clone(),
-        name: name.clone(),
+        fqn,
+        name: source_name.clone(),
         kind,
         module: module.to_string(),
         size: None,
@@ -454,7 +557,7 @@ fn parse_class_or_struct(
         vtable_slot: None,
         type_ref: None,
         flags: SymbolFlags {
-            public: is_class,
+            public: true,
             ..Default::default()
         },
         source_loc: Some(SourceLoc {
@@ -462,41 +565,16 @@ fn parse_class_or_struct(
             line: header_line,
         }),
     });
-    builder.add_relation(parent_id, class_id, RelationKind::Contains);
+    builder.add_relation(mod_id, class_id, RelationKind::Contains);
 
     if let Some(pn) = parent_name {
-        if let Some(&pid) = builder.fqn_index.get(&format!("{module}.{pn}")) {
-            builder.add_relation(class_id, pid, RelationKind::Inherits);
-        } else if let Some(sl) = builder
-            .symbols
-            .last_mut()
-            .expect("just pushed")
-            .source_loc
-            .as_mut()
-        {
-            // Defer: record parent name in the source_loc.file so the
-            // resolve pass can pick it up. Not pretty; it would be
-            // cleaner to add a dedicated `pending_parents` queue. Doing
-            // the cleaner thing once cross-module parent linkage is
-            // actually needed.
-            sl.file = format!("{}#parent={pn}", sl.file);
-        }
+        builder.pending_parents.push((class_id, pn));
     }
 
-    // Parse body until matching '}'.
-    parse_class_body(cur, module, file, class_id, &name, builder, warnings);
+    parse_class_body(cur, module, file, class_id, &source_name, builder, warnings);
 
     cur.eat_punct('}');
     cur.eat_punct(';');
-
-    // Second pass: resolve parent if we deferred it. We do this by
-    // re-walking the symbol's source_loc trick if present, OR — better
-    // — checking after the fact by re-reading the symbol. Simpler: do
-    // it on resolve_references for the whole graph. We'll handle that
-    // at the file boundary, but we can also do it here on the spot if
-    // the parent is now known.
-    // (Not implementing the parent-deferred fixup beyond the in-graph
-    // resolve_references pass for Phase 1.)
 }
 
 fn parse_class_body(
@@ -522,7 +600,6 @@ fn parse_class_body(
             continue;
         }
 
-        // Access specifier: `public:` / `private:` / `protected:`
         if t.kind == TokenKind::Ident
             && matches!(t.text.as_str(), "public" | "private" | "protected")
             && cur.peek_at(1).map(|n| n.text.as_str()) == Some(":")
@@ -542,46 +619,68 @@ fn parse_class_body(
                 },
                 _ => SymbolFlags::default(),
             };
-            cur.advance(); // access keyword
-            cur.advance(); // ':'
+            cur.advance();
+            cur.advance();
             continue;
         }
 
-        // static UClass* StaticClass(); — skip
-        if t.kind == TokenKind::Ident && t.text == "static" {
+        if t.kind == TokenKind::Ident && matches!(t.text.as_str(), "class" | "struct") {
+            // Decide whether `class X` here is a nested decl or a
+            // forward-decl type prefix in a field. We can tell by
+            // looking 2 ahead: if there's `{` or `:` after the name,
+            // it's a nested declaration; otherwise it's a type prefix.
+            let next = cur.peek_at(2).map(|n| n.text.as_str());
+            if matches!(next, Some(":") | Some("{")) {
+                let is_class = t.text == "class";
+                parse_class_or_struct(cur, module, file, is_class, builder, warnings);
+                continue;
+            }
+            // fall through — treated as field type below
+        }
+
+        if t.kind == TokenKind::Ident && t.text == "enum" {
+            parse_enum(cur, module, file, builder, warnings);
+            continue;
+        }
+
+        // template <...> — skip the template clause then continue with
+        // whatever follows.
+        if t.kind == TokenKind::Ident && t.text == "template" {
+            cur.advance();
+            if cur.at_punct('<') {
+                cur.skip_balanced('<', '>');
+            }
+            continue;
+        }
+
+        // `using X = Y;` / `using namespace X;` / `using X::Y;` — skip.
+        if t.kind == TokenKind::Ident && (t.text == "using" || t.text == "typedef") {
+            cur.advance();
             skip_until_semi_or_braced(cur);
             continue;
         }
 
-        // Nested class/struct/enum inside a class body — recurse.
-        if t.kind == TokenKind::Ident && matches!(t.text.as_str(), "class" | "struct") {
-            let is_class = t.text == "class";
-            parse_class_or_struct(cur, module, file, is_class, class_id, builder, warnings);
-            continue;
-        }
-        if t.kind == TokenKind::Ident && t.text == "enum" {
-            parse_enum(cur, module, file, class_id, builder, warnings);
+        // `friend ...` — skip whole statement.
+        if t.kind == TokenKind::Ident && t.text == "friend" {
+            cur.advance();
+            skip_until_semi_or_braced(cur);
             continue;
         }
 
-        // Method? Starts with `virtual` keyword or has `(` later on the
-        // same line. We'll peek ahead.
-        if t.kind == TokenKind::Ident && t.text == "virtual" {
-            parse_method(
-                cur,
-                module,
-                file,
-                class_id,
-                class_name,
-                current_access,
-                builder,
-                warnings,
-            );
+        // Macros and one-token bareword statements (`DUMPER7_ASSERTS_X;`).
+        if t.kind == TokenKind::Ident
+            && cur.peek_at(1).map(|n| n.text.as_str()) == Some(";")
+            && t.text
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase())
+        {
+            cur.advance();
+            cur.advance();
             continue;
         }
 
-        // Field or method without `virtual`. Read until ';' or '('
-        // whichever comes first to decide.
+        // Field or method?
         if t.kind == TokenKind::Ident {
             let look = peek_decl_shape(cur);
             match look {
@@ -628,8 +727,9 @@ enum DeclShape {
     Unknown,
 }
 
-/// Look ahead until we see `;`, `(`, or `}`. If `(` first → method.
-/// If `;` first → field. Otherwise unknown.
+/// Decide whether the next token-run is a field or method. We scan
+/// forward looking for the first `;`, `(`, or `}`. `;` first → field;
+/// `(` first → method; `}` first → we walked off the end.
 fn peek_decl_shape(cur: &Cursor) -> DeclShape {
     let mut i = 0;
     while let Some(t) = cur.peek_at(i) {
@@ -642,7 +742,7 @@ fn peek_decl_shape(cur: &Cursor) -> DeclShape {
             }
         }
         i += 1;
-        if i > 64 {
+        if i > 512 {
             return DeclShape::Unknown;
         }
     }
@@ -665,7 +765,24 @@ fn parse_field(
 ) {
     let start_line = cur.peek().map_or(0, |t| t.line);
 
-    // Parse type — sequence of idents + optional `*`/`&`/`<...>`
+    // Storage-class modifiers
+    let mut is_static = false;
+    while let Some(t) = cur.peek().cloned() {
+        if t.kind != TokenKind::Ident {
+            break;
+        }
+        match t.text.as_str() {
+            "static" => {
+                is_static = true;
+                cur.advance();
+            }
+            "inline" | "constexpr" | "mutable" | "volatile" => {
+                cur.advance();
+            }
+            _ => break,
+        }
+    }
+
     let type_ref = match read_type(cur) {
         Some(t) => t,
         None => {
@@ -675,7 +792,6 @@ fn parse_field(
         }
     };
 
-    // Parse name
     let Some(name_tok) = cur.peek().cloned() else {
         *warnings += 1;
         return;
@@ -688,7 +804,6 @@ fn parse_field(
     cur.advance();
     let field_name = name_tok.text;
 
-    // Optional array dim
     let mut array_dim: Option<u32> = None;
     if cur.eat_punct('[') {
         if let Some(t) = cur.peek().cloned() {
@@ -700,7 +815,7 @@ fn parse_field(
         let _ = cur.eat_punct(']');
     }
 
-    // Optional default initializer `= ...` — skip
+    // Default initializer `= ...` — skip
     if cur.at_punct('=') {
         while let Some(t) = cur.peek() {
             if t.kind == TokenKind::Punct && t.text == ";" {
@@ -716,24 +831,23 @@ fn parse_field(
         return;
     }
 
-    // Next token may be a comment that holds the offset/size annotation.
     let mut offset = None;
     let mut size = None;
     let mut flags = access;
+    flags.static_member = is_static;
     if let Some(c) = cur.peek().cloned() {
         if c.kind == TokenKind::Comment && c.line == name_tok.line {
             cur.advance();
-            let (off, sz, extra_flags) = parse_field_annotation(&c.text);
+            let (off, sz, extra) = parse_field_annotation(&c.text);
             offset = off;
             size = sz;
-            apply_extra_flags(&mut flags, &extra_flags);
+            apply_extra_flags(&mut flags, &extra);
         }
     }
 
-    // Apply array dim to type modifiers if present.
-    let type_ref = if array_dim.is_some() {
+    let type_ref = if let Some(dim) = array_dim {
         let mut m = type_ref.modifiers().clone();
-        m.array_dim = array_dim;
+        m.array_dim = Some(dim);
         match type_ref {
             TypeRef::Local { local_id, .. } => TypeRef::Local {
                 local_id,
@@ -767,22 +881,19 @@ fn parse_field(
     builder.add_relation(class_id, id, RelationKind::Contains);
 }
 
-/// Parse the `// 0xNNNN(0xNNNN)` annotation. Returns (offset, size,
-/// extra_flag_tags). Robust against extra commentary after the size.
 fn parse_field_annotation(comment: &str) -> (Option<u32>, Option<u32>, Vec<String>) {
-    // Looking for the first `0xNNNN` then optional `(0xNNNN)`.
     let mut offset = None;
     let mut size = None;
     let bytes = comment.as_bytes();
     let mut i = 0;
     while i + 1 < bytes.len() {
         if bytes[i] == b'0' && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X') {
-            let start = i;
-            let mut j = i + 2;
+            let start = i + 2;
+            let mut j = start;
             while j < bytes.len() && bytes[j].is_ascii_hexdigit() {
                 j += 1;
             }
-            let n = u32::from_str_radix(&comment[start + 2..j], 16).ok();
+            let n = u32::from_str_radix(&comment[start..j], 16).ok();
             if offset.is_none() {
                 offset = n;
             } else if size.is_none() {
@@ -795,19 +906,21 @@ fn parse_field_annotation(comment: &str) -> (Option<u32>, Option<u32>, Vec<Strin
         }
     }
     let mut flags = Vec::new();
-    if comment.contains("(Const") || comment.contains(", Const") {
+    if comment.contains("Const") {
         flags.push("const".into());
     }
-    if comment.contains("Edit") {
-        flags.push("editable".into());
+    if comment.contains("Deprecated") {
+        flags.push("deprecated".into());
     }
     (offset, size, flags)
 }
 
 fn apply_extra_flags(flags: &mut SymbolFlags, tags: &[String]) {
     for t in tags {
-        if t == "const" {
-            flags.const_member = true;
+        match t.as_str() {
+            "const" => flags.const_member = true,
+            "deprecated" => flags.deprecated = true,
+            _ => {}
         }
     }
 }
@@ -827,18 +940,22 @@ fn parse_method(
     warnings: &mut u64,
 ) {
     let start_line = cur.peek().map_or(0, |t| t.line);
-
     let mut flags = access;
-    flags.public = access.public;
 
-    if cur.eat_ident("virtual") {
-        flags.virtual_fn = true;
-    }
-    if cur.eat_ident("static") {
-        flags.static_member = true;
+    // Storage / virtual qualifiers, in any order.
+    loop {
+        if cur.eat_ident("virtual") {
+            flags.virtual_fn = true;
+        } else if cur.eat_ident("static") {
+            flags.static_member = true;
+        } else if cur.eat_ident("inline") || cur.eat_ident("constexpr") || cur.eat_ident("explicit")
+        {
+            // qualifier we don't carry separately
+        } else {
+            break;
+        }
     }
 
-    // Return type
     let return_type = match read_type(cur) {
         Some(t) => t,
         None => {
@@ -848,7 +965,6 @@ fn parse_method(
         }
     };
 
-    // Method name
     let Some(name_tok) = cur.peek().cloned() else {
         *warnings += 1;
         return;
@@ -861,9 +977,6 @@ fn parse_method(
     cur.advance();
     let method_name = name_tok.text;
 
-    // Params — skip past balanced parens. For Phase 1 we don't extract
-    // individual parameters as separate symbols; they're recorded as
-    // part of the function signature in the future.
     if !cur.at_punct('(') {
         *warnings += 1;
         skip_until_semi_or_braced(cur);
@@ -871,7 +984,7 @@ fn parse_method(
     }
     cur.skip_balanced('(', ')');
 
-    // Optional `const` / `override` / `= 0` / `noexcept`
+    // Post-signature qualifiers and pure-virtual marker.
     while let Some(t) = cur.peek().cloned() {
         if t.kind == TokenKind::Ident {
             match t.text.as_str() {
@@ -879,16 +992,12 @@ fn parse_method(
                     flags.const_member = true;
                     cur.advance();
                 }
-                "override" => {
-                    cur.advance();
-                }
-                "noexcept" => {
+                "override" | "noexcept" | "final" => {
                     cur.advance();
                 }
                 _ => break,
             }
         } else if t.kind == TokenKind::Punct && t.text == "=" {
-            // `= 0` pure virtual
             cur.advance();
             if let Some(n) = cur.peek().cloned() {
                 if n.kind == TokenKind::Number && n.text == "0" {
@@ -901,13 +1010,17 @@ fn parse_method(
         }
     }
 
-    if !cur.eat_punct(';') {
+    // Method may have an inline body `{ ... }` or end with `;`.
+    if cur.at_punct('{') {
+        cur.skip_balanced('{', '}');
+        // Optional trailing semicolon.
+        let _ = cur.eat_punct(';');
+    } else if !cur.eat_punct(';') {
         *warnings += 1;
         skip_until_semi_or_braced(cur);
         return;
     }
 
-    // Vtable-slot comment: // [0xNN] (Virtual)
     let mut vtable_slot = None;
     if let Some(c) = cur.peek().cloned() {
         if c.kind == TokenKind::Comment && c.line == start_line {
@@ -938,7 +1051,6 @@ fn parse_method(
 }
 
 fn parse_vtable_annotation(comment: &str) -> Option<u32> {
-    // Pattern: `[0xNN] (Virtual)` — pull the first 0xNN we see.
     let bytes = comment.as_bytes();
     let mut i = 0;
     while i + 1 < bytes.len() {
@@ -963,14 +1075,12 @@ fn parse_enum(
     cur: &mut Cursor,
     module: &str,
     file: &str,
-    parent_id: u32,
     builder: &mut GraphBuilder,
     warnings: &mut u64,
 ) {
     let header_line = cur.peek().map_or(0, |t| t.line);
+    let mod_id = module_id(builder, module);
     cur.advance(); // 'enum'
-
-    // optional `class`
     let _ = cur.eat_ident("class");
 
     let Some(name_tok) = cur.peek().cloned() else {
@@ -982,15 +1092,15 @@ fn parse_enum(
         return;
     }
     cur.advance();
-    let enum_name = name_tok.text;
+    let source_name = name_tok.text;
 
-    // optional `: underlying_type` — read and discard
     if cur.eat_punct(':') {
         let _ = read_type(cur);
     }
 
     if cur.eat_punct(';') {
-        return; // forward decl
+        let _ = cur.take_pending_decl_for("Enum");
+        return;
     }
 
     if !cur.eat_punct('{') {
@@ -999,12 +1109,17 @@ fn parse_enum(
         return;
     }
 
+    let pending = cur.take_pending_decl_for("Enum");
+    let fqn = pending
+        .as_ref()
+        .map(|h| h.fqn.clone())
+        .unwrap_or_else(|| format!("{module}.{source_name}"));
+
     let enum_id = builder.alloc_id();
-    let enum_fqn = format!("{module}.{enum_name}");
     builder.push_symbol(Symbol {
         local_id: enum_id,
-        fqn: enum_fqn,
-        name: enum_name.clone(),
+        fqn,
+        name: source_name.clone(),
         kind: SymbolKind::Enum,
         module: module.to_string(),
         size: None,
@@ -1021,11 +1136,9 @@ fn parse_enum(
             line: header_line,
         }),
     });
-    builder.add_relation(parent_id, enum_id, RelationKind::Contains);
+    builder.add_relation(mod_id, enum_id, RelationKind::Contains);
 
-    // body: { Ident = Number, ... }
     loop {
-        // skip leading comments / commas
         while let Some(t) = cur.peek().cloned() {
             if t.kind == TokenKind::Comment {
                 cur.advance();
@@ -1061,7 +1174,7 @@ fn parse_enum(
             let id = builder.alloc_id();
             builder.push_symbol(Symbol {
                 local_id: id,
-                fqn: format!("{module}.{enum_name}.{value_name}"),
+                fqn: format!("{module}.{source_name}.{value_name}"),
                 name: value_name,
                 kind: SymbolKind::EnumValue,
                 module: module.to_string(),
@@ -1079,31 +1192,32 @@ fn parse_enum(
             builder.add_relation(enum_id, id, RelationKind::Contains);
             continue;
         }
-        // Anything else — advance to recover.
         cur.advance();
     }
 }
 
 // ---------------------------------------------------------------------------
-// Type expression reader.
+// Type expression reader
 // ---------------------------------------------------------------------------
 
 const BUILTIN_TYPES: &[&str] = &[
     "void", "bool", "char", "int", "long", "short", "float", "double", "size_t", "uint8_t",
     "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "uint8",
-    "uint16", "uint32", "uint64", "int8", "int16", "int32", "int64",
+    "uint16", "uint32", "uint64", "int8", "int16", "int32", "int64", "FString", "FText", "FName",
 ];
 
 fn is_builtin(name: &str) -> bool {
     BUILTIN_TYPES.contains(&name)
 }
 
-/// Read a C++-style type expression. Returns `None` if no type was
-/// recognized at the current position.
 fn read_type(cur: &mut Cursor) -> Option<TypeRef> {
     let mut modifiers = TypeModifiers::default();
     let mut is_const = false;
     let mut base_name: Option<String> = None;
+
+    // Eat `class`/`struct`/`enum` forward-decl prefix on types (e.g.
+    // `class UFoo*` in Dumper-7 output).
+    let _ = cur.eat_ident("class") || cur.eat_ident("struct") || cur.eat_ident("enum");
 
     while let Some(t) = cur.peek().cloned() {
         if t.kind == TokenKind::Ident {
@@ -1114,13 +1228,12 @@ fn read_type(cur: &mut Cursor) -> Option<TypeRef> {
                     continue;
                 }
                 "unsigned" | "signed" => {
-                    // sign prefix — leave as part of base name
-                    if base_name.is_none() {
-                        base_name = Some(t.text.clone());
+                    let prev = base_name.unwrap_or_default();
+                    base_name = Some(if prev.is_empty() {
+                        t.text.clone()
                     } else {
-                        let prev = base_name.take().unwrap_or_default();
-                        base_name = Some(format!("{prev} {}", t.text));
-                    }
+                        format!("{prev} {}", t.text)
+                    });
                     cur.advance();
                     continue;
                 }
@@ -1130,7 +1243,23 @@ fn read_type(cur: &mut Cursor) -> Option<TypeRef> {
                     }
                     base_name = Some(t.text.clone());
                     cur.advance();
-                    // Optional template args: TArray<FString>
+                    // `Foo::Bar::Baz` namespace-qualified names.
+                    while cur.at_punct(':') && cur.peek_at(1).map(|n| n.text.as_str()) == Some(":")
+                    {
+                        cur.advance();
+                        cur.advance();
+                        if let Some(n) = cur.peek().cloned() {
+                            if n.kind == TokenKind::Ident {
+                                let prev = base_name.take().unwrap_or_default();
+                                base_name = Some(format!("{prev}::{}", n.text));
+                                cur.advance();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
                     if cur.at_punct('<') {
                         cur.advance();
                         let args = read_template_args(cur);
