@@ -67,6 +67,40 @@ All notable changes to Codex Atlas land here. Format loosely follows [Keep a Cha
 - Inline rename Confirm/Reject UI (the IPC command + `RenameOverride` shape are ready).
 - Diff JSON caching at `diffs/<base>-<head>.json`.
 
+## [0.4.0] — 2026-05-22
+
+### Added
+- Phase 4 — Export. Symbol selection → Tera template → on-disk scaffold with `_atlas.json` sidecar (plan §10).
+- `atlas-core::export` module:
+  - `Project`, `Selection`, `SelectionRules` shape (selection rules wired through; transitive closure rules not yet applied — see TASKS.md).
+  - `ExportContext` + `SymbolView` view-model; both decimal and `0xHEX` forms surfaced for offsets and vtable slots so templates don't have to format themselves.
+  - `build_context` hydrates the symbol set from SQLite and computes each field's parent FQN by walking `Contains` relations.
+  - `render_to_string` runs Tera against a single template by source text.
+  - `AtlasSidecar` (`_atlas.json`): atlas version, exported_at, game/version/dump ids, template name, BLAKE3-hashed template version, selection rules. Round-trips through JSON.
+  - Template registry (`templates::available_templates` / `load_template`): bundled via `include_str!`, override via `<data>/templates/<name>.tera`.
+- Bundled templates:
+  - `Trainer.cs.tera` — single-file C# console trainer matching the 2HighInternal reference style (P/Invoke OpenProcess/ReadProcessMemory/WriteProcessMemory, `CheatEntry` registry, freeze threads, console UI).
+  - `Offsets.h.tera` — flat C++ header of `static constexpr` offsets, grouped by class with vtable slots.
+  - `IDA-Mapping.txt.tera` — tab-separated fqn / offset / size triples.
+  - `Sigscan.txt.tera` — placeholder signature stubs by fqn.
+- IPC commands: `list_templates`, `resolve_fqns` (FQN → 16-byte id), `render_export_preview`, `write_export`.
+- React Export route (`src/routes/export.tsx`): dump selector, template picker, project/class/process inputs, paste-FQNs textarea with live resolve feedback, debounced 200 ms preview, write-to-disk via `@tauri-apps/plugin-dialog` open(directory).
+- 4 export integration tests (Trainer / Offsets / IDA mapping render correctness, sidecar JSON round-trip).
+- Trainer reference at `fixtures/real/trainer-reference/2HighInternal/` (source files only, build artifacts excluded).
+
+### Acceptance gate (plan §10 — partial)
+- 60 Rust workspace tests + 2 Vitest tests pass.
+- `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`, `pnpm typecheck/test/build` all clean.
+- Trainer scaffold contains the expected structural marks (P/Invoke block, `CheatEntry`, `cheats.Add` calls with the BaseOffset TODO).
+- Sidecar JSON round-trips and includes a `blake3:` template hash.
+- `_atlas.json` written next to the rendered artifact, both paths returned to the frontend.
+
+### Deferred (in TASKS.md)
+- `dotnet build` compile-check in CI for the rendered C# (plan §10 lists this as optional).
+- Right-click "Copy as…" submenu in the Browse route.
+- Selection-rules transitive closure (`include_parents`, `type_depth`) — the wire format is ready, the resolver isn't.
+- `Snippets/csharp_struct.tera` and `Snippets/cheat_engine_chain.tera` — not yet authored.
+
 ## [Unreleased]
 
 ### Added

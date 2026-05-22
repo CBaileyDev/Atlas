@@ -639,6 +639,7 @@ dependencies = [
  "atlas-parser-trait",
  "atlas-parser-ue",
  "chrono",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",

@@ -38,8 +38,16 @@ vi.mock("@/ipc/client", async () => {
       renamed_suggestions: [],
       field_changes: [],
     })),
+    listTemplates: vi.fn(async () => []),
+    resolveFqns: vi.fn(async () => []),
+    renderExportPreview: vi.fn(async () => ""),
+    writeExport: vi.fn(),
   };
 });
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(async () => null),
+}));
 
 import App from "./App";
 

@@ -19,6 +19,7 @@
 
 pub mod diff;
 pub mod error;
+pub mod export;
 pub mod paths;
 pub mod search;
 pub mod storage;

@@ -8,5 +8,6 @@
 
 pub mod diff;
 pub mod dumps;
+pub mod export;
 pub mod ping;
 pub mod search;

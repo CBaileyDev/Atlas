@@ -1,0 +1,13 @@
+# Codex Atlas IDA mapping
+# game: {{ game_id }} {{ game_version }}  dump: {{ dump_id }}
+# generated: {{ generated_at }}
+#
+# Lines below follow:  <fqn>\t<offset_hex>\t<size_hex>
+# Paste into IDA or transform via your own loader script.
+{%- for s in symbols %}
+{%- if s.kind == "field" %}
+{{ s.fqn }}	{{ s.offset_hex | default(value="-") }}	{% if s.size %}0x{{ s.size }}{% else %}-{% endif %}
+{%- elif s.kind == "function" and s.vtable_slot is defined %}
+{{ s.fqn }}	vtable[{{ s.vtable_slot_hex }}]	-
+{%- endif %}
+{%- endfor %}

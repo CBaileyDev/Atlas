@@ -8,11 +8,15 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   Diff,
   DumpListItem,
+  ExportRequest,
   IngestReport,
   OpenDumpInfo,
   PingResponse,
+  ResolvedSymbol,
   SearchResult,
   SymbolRow,
+  TemplateInfo,
+  WriteResult,
 } from "./types";
 
 function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -74,5 +78,41 @@ export function diffDumps(args: {
   return invoke<Diff>("diff_dumps", {
     baseDumpId: args.baseDumpId,
     headDumpId: args.headDumpId,
+  });
+}
+
+/** List bundled + overridden templates available to the export pipeline. */
+export function listTemplates(): Promise<TemplateInfo[]> {
+  return invoke<TemplateInfo[]>("list_templates");
+}
+
+/** Look up a list of FQNs against a dump; returns id_hex per FQN (null if not found). */
+export function resolveFqns(args: {
+  dumpId: number;
+  fqns: string[];
+}): Promise<ResolvedSymbol[]> {
+  return invoke<ResolvedSymbol[]>("resolve_fqns", {
+    dumpId: args.dumpId,
+    fqns: args.fqns,
+  });
+}
+
+/** Render the export to a string for live preview. */
+export function renderExportPreview(req: ExportRequest): Promise<string> {
+  return invoke<string>("render_export_preview", { req });
+}
+
+/** Write the export and its `_atlas.json` sidecar to a directory. */
+export function writeExport(args: {
+  req: ExportRequest;
+  destDir: string;
+  outputFilename: string;
+}): Promise<WriteResult> {
+  return invoke<WriteResult>("write_export", {
+    req: {
+      ...args.req,
+      dest_dir: args.destDir,
+      output_filename: args.outputFilename,
+    },
   });
 }
