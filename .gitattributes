@@ -1,0 +1,26 @@
+# Default to LF for text files
+* text=auto eol=lf
+
+# Force binary handling for known binaries
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.sqlite binary
+*.db binary
+*.zip binary
+*.gz binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
+*.pdb binary
+
+# Lockfiles should not be modified
+pnpm-lock.yaml -diff
+Cargo.lock -diff
+
+# Generated TS bindings — don't review them
+src/ipc/types.ts linguist-generated=true

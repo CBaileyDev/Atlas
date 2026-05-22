@@ -1,0 +1,44 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Atlas runtime data (in case it ever lands inside the repo dir)
+/atlas-data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Real fixtures (user-supplied, gitignored per plan §5)
+fixtures/real/
+
+# Build artifacts and caches
+.turbo/
+.cache/
+coverage/
+*.tsbuildinfo
