@@ -22,6 +22,7 @@ tauri-build = { workspace = true }
 [dependencies]
 atlas-core = { workspace = true }
 atlas-parser-trait = { workspace = true }
+atlas-parser-ue = { workspace = true }
 
 tauri = { workspace = true, features = ["devtools"] }
 tauri-plugin-dialog = { workspace = true }

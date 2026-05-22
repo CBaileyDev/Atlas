@@ -9,6 +9,7 @@ description = "Storage, search, diff, and export engines for Codex Atlas."
 
 [dependencies]
 atlas-parser-trait = { workspace = true }
+atlas-parser-ue = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

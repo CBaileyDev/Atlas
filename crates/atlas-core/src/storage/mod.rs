@@ -8,7 +8,10 @@
 //! Real read/write APIs (`ingest`, `list_dumps`, `get_symbol`, etc.) land
 //! in Phase 1 and later.
 
+pub mod ingest;
 pub mod migrations;
+
+pub use ingest::IngestReport;
 
 use std::path::Path;
 
@@ -20,7 +23,7 @@ use crate::error::{AtlasError, AtlasResult};
 /// single-process, so we don't need a pool; a single connection with WAL
 /// mode handles our concurrency comfortably.
 pub struct Db {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 impl Db {

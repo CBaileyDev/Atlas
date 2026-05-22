@@ -6,4 +6,5 @@
 //! phases under `dumps.rs`, `symbols.rs`, `search.rs`, `diff.rs`,
 //! `export.rs` respectively.
 
+pub mod dumps;
 pub mod ping;

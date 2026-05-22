@@ -30,7 +30,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::ping::ping])
+        .invoke_handler(tauri::generate_handler![
+            commands::ping::ping,
+            commands::dumps::ingest_dump,
+        ])
         .setup(|_app| {
             tracing::info!("application setup complete");
             Ok(())

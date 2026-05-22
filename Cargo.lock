@@ -245,6 +245,7 @@ name = "atlas-core"
 version = "0.0.0"
 dependencies = [
  "atlas-parser-trait",
+ "atlas-parser-ue",
  "blake3",
  "chrono",
  "directories",
@@ -279,10 +280,12 @@ name = "atlas-parser-ue"
 version = "0.0.0"
 dependencies = [
  "atlas-parser-trait",
+ "chrono",
  "insta",
  "memmap2",
  "proptest",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -634,6 +637,7 @@ dependencies = [
  "anyhow",
  "atlas-core",
  "atlas-parser-trait",
+ "atlas-parser-ue",
  "chrono",
  "serde",
  "serde_json",
