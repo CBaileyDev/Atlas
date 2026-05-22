@@ -11,3 +11,4 @@ pub mod dumps;
 pub mod export;
 pub mod ping;
 pub mod search;
+pub mod settings;

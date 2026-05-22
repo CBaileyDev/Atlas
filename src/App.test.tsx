@@ -49,6 +49,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(async () => null),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => undefined),
+  emit: vi.fn(),
+}));
+
 import App from "./App";
 
 describe("App", () => {

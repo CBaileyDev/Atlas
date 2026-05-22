@@ -140,6 +140,18 @@ export interface Diff {
   field_changes: FieldChange[];
 }
 
+// ---- Settings + watcher --------------------------------------------------
+
+export interface AtlasSettings {
+  watcher_roots: string[];
+  watcher_debounce_ms: number;
+}
+
+export interface DumpDetectedEvent {
+  path: string;
+  watched_root: string;
+}
+
 // ---- Export -------------------------------------------------------------
 
 export interface TemplateInfo {

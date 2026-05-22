@@ -29,6 +29,7 @@ directories = { workspace = true }
 ts-rs = { workspace = true }
 
 [dev-dependencies]
+atlas-parser-unity = { workspace = true }
 insta = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
