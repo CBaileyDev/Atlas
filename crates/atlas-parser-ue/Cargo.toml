@@ -1,0 +1,24 @@
+[package]
+name = "atlas-parser-ue"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Dumper-7 parser for Unreal Engine SDK dumps (Phase 1)."
+
+[dependencies]
+atlas-parser-trait = { workspace = true }
+
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+memmap2 = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

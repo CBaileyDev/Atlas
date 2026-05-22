@@ -1,0 +1,18 @@
+[package]
+name = "atlas-parser-unity"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unity IL2CPP parser stub (Phase 5+)."
+
+[dependencies]
+atlas-parser-trait = { workspace = true }
+
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,37 @@
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+
+// Mock the Tauri IPC layer before importing the App. In a real Tauri
+// window the bridge is injected by the runtime; in jsdom we substitute
+// our own implementation.
+vi.mock("@/ipc/client", async () => {
+  return {
+    ping: vi.fn(async (message?: string) => ({
+      pong: "pong",
+      echoed: message ?? null,
+      timestamp: "2026-01-01T00:00:00Z",
+      version: "0.0.0",
+    })),
+  };
+});
+
+import App from "./App";
+
+describe("App", () => {
+  it("renders the four route tabs", () => {
+    render(<App />);
+    expect(screen.getByRole("button", { name: /browse/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /diff/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /export/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it("calls ping on mount and displays the pong response", async () => {
+    render(<App />);
+    const badge = screen.getByTestId("conn-badge");
+    await waitFor(() => {
+      expect(badge.textContent).toMatch(/Connected/);
+    });
+    expect(badge.textContent).toMatch(/pong/);
+  });
+});

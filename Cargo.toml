@@ -1,0 +1,114 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/atlas-core",
+    "crates/atlas-parser-trait",
+    "crates/atlas-parser-ue",
+    "crates/atlas-parser-unity",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+authors = ["Carter Bailey <barker_carter@icloud.com>"]
+license = "UNLICENSED"
+repository = "https://github.com/CBaileyDev/Atlas"
+rust-version = "1.80"
+
+[workspace.dependencies]
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "time", "io-util"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = { version = "10", features = ["serde-compat", "chrono-impl"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.2"
+
+# Hashing
+blake3 = "1.5"
+xxhash-rust = { version = "0.8", features = ["xxh3", "xxh64"] }
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled", "blob", "backup", "chrono"] }
+refinery = { version = "0.8", features = ["rusqlite"] }
+
+# Search
+tantivy = "0.22"
+
+# Templating
+tera = "1"
+
+# Paths
+directories = "5"
+
+# IO helpers
+memmap2 = "0.9"
+
+# Filesystem watcher (Phase 5)
+notify = "6"
+
+# Tauri
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
+
+# Testing
+insta = { version = "1", features = ["yaml", "json"] }
+proptest = "1"
+tempfile = "3"
+
+# Local workspace crates (so members can resolve each other)
+atlas-core = { path = "crates/atlas-core" }
+atlas-parser-trait = { path = "crates/atlas-parser-trait" }
+atlas-parser-ue = { path = "crates/atlas-parser-ue" }
+atlas-parser-unity = { path = "crates/atlas-parser-unity" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+# Matches the acceptance gate (`cargo clippy --workspace -- -D warnings`).
+# Stays at clippy::all by default; pedantic/nursery are deliberately not
+# blanket-enabled so the gate doesn't fail on stylistic preferences.
+all = { level = "deny", priority = -1 }
+
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
+# Build dependencies in release mode even in dev — speeds up tantivy/rusqlite usage
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = "thin"
+
+# A test profile that disables panic=abort (tauri can need unwinding)
+[profile.test]
+opt-level = 0
+debug = true

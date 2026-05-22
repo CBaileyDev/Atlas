@@ -1,0 +1,36 @@
+[package]
+name = "atlas-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Storage, search, diff, and export engines for Codex Atlas."
+
+[dependencies]
+atlas-parser-trait = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+tracing = { workspace = true }
+blake3 = { workspace = true }
+xxhash-rust = { workspace = true }
+
+rusqlite = { workspace = true }
+refinery = { workspace = true }
+tantivy = { workspace = true }
+tera = { workspace = true }
+directories = { workspace = true }
+
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
