@@ -20,8 +20,22 @@ Format: one line per deferred task. Add a phase tag and a one-sentence reason. R
   ("tolerant of minor format drift — log, skip, continue") but worth
   bucketing by cause once the diff engine surfaces real impact.
 - ⚠ Frontend has no ingest UI yet. The `ingest_dump` IPC command is
-  wired but only invokable from devtools or a test harness. The Browse
-  route gets that UI in Phase 2.
+  wired but only invokable from devtools or a test harness. A small
+  "ingest button" UI is the cheapest add for the Settings route.
+- `[Phase 2]` Virtualized table for the Browse hit list. Current
+  implementation renders flat — fine at the 200-row default limit,
+  but the plan §8 budget asks for sub-50 ms keystroke response on
+  <1000 rows, and a virtualizer (tanstack-react-virtual is already
+  installed) is the cleanest way to keep that under any limit.
+- `[Phase 2]` Cmd-K command palette using `cmdk`. Search input
+  already handles the data flow; this is a UX add, not new plumbing.
+- `[Phase 2]` Type-ref hyperlinks in the detail panel — click a
+  field's type to jump to that symbol. Requires resolving the
+  `type_ref_json` blob in the frontend and dispatching to the same
+  selection state.
+- `[Phase 2]` Keyboard navigation in the hit list (↑/↓/Enter/Esc).
+- `[Phase 2]` Zustand store wiring: persist last selected dump,
+  query, and symbol across reloads.
 
 ## Conventions
 

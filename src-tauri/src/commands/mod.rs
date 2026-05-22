@@ -8,3 +8,4 @@
 
 pub mod dumps;
 pub mod ping;
+pub mod search;

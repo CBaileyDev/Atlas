@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ping } from "@/ipc/client";
 import type { PingResponse } from "@/ipc/types";
+import BrowseRoute from "@/routes/browse";
 
 type ConnState =
   | { status: "idle" }
@@ -117,7 +118,7 @@ function ConnBadge({ conn }: { conn: ConnState }) {
 function RouteView({ tab }: { tab: Tab }) {
   switch (tab) {
     case "browse":
-      return <PlaceholderRoute title="Browse" body="Symbol browse lands in Phase 2." />;
+      return <BrowseRoute />;
     case "diff":
       return <PlaceholderRoute title="Diff" body="Diff engine lands in Phase 3." />;
     case "export":
