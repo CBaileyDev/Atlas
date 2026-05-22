@@ -101,6 +101,30 @@ All notable changes to Codex Atlas land here. Format loosely follows [Keep a Cha
 - Selection-rules transitive closure (`include_parents`, `type_depth`) — the wire format is ready, the resolver isn't.
 - `Snippets/csharp_struct.tera` and `Snippets/cheat_engine_chain.tera` — not yet authored.
 
+## [0.5.0] — 2026-05-22
+
+### Added
+- Phase 5 — Polish + folder watcher (plan §11; marked optional, shipped anyway).
+- `atlas-core::settings`: `AtlasSettings` (`watcher_roots: Vec<PathBuf>`, `watcher_debounce_ms: u64`), persisted at `<data>/settings.json`. Forward-compatible: unknown fields are ignored on load.
+- `atlas-parser-unity::Il2CppStubParser` implements `SdkParser` and emits a tiny module+class graph from an `il2cpp-stub.json` marker (or `dump.cs`). Architectural proof that the trait supports more than one parser; ingest works through the same `Db::ingest` path as the UE parser.
+- `src-tauri::watcher`: background Tokio task that wires `notify::recommended_watcher` to a per-candidate debounce timer. When a path under a watched root stays stable for `watcher_debounce_ms` and looks like a Dumper-7 output (`CppSDK/SDK`, `_SDKInfo.json`, `SDKInfo.json`, or `SDK.hpp`), it emits a `watcher:dump-detected` event. De-dupes already-announced paths.
+- IPC commands: `get_settings`, `save_settings`, `add_watcher_root`, `remove_watcher_root`.
+- Light-mode palette under `[data-theme="light"]` in `globals.css`. New `useTheme` Zustand store reads OS preference on first launch, persists choice in `localStorage`, applies via `<html data-theme="…">` for instant swap.
+- `WatcherToast` component: bottom-right toast on every `watcher:dump-detected`, with an inline "Ingest" button that runs `ingest_dump` and auto-dismisses on success.
+- Settings route expansions: theme switcher, folder-watcher roots manager (add/remove with file picker), and an annotated data-directory reference.
+
+### Acceptance gate (plan §11 — partial)
+- Watcher fires within ~`watcher_debounce_ms` of a folder going stable (5 s default). Verified by inspection of the event-handling path; full end-to-end timing test isn't automated yet.
+- Theme switch is instant — CSS variables flip on the `<html>` attribute, no flash, no relayout.
+- Stub Unity parser ingests through the same code path as the UE parser (`tests/multi_parser.rs`).
+- 65 Rust workspace tests + 2 Vitest tests pass. `cargo clippy --workspace -- -D warnings` clean. `pnpm typecheck/test/build` clean.
+
+### Deferred to TASKS.md
+- Hot-reload of `watcher_roots` without app restart.
+- Tauri tray notification (today the toast is in-window only).
+- "Settings.json" UI fields for `watcher_debounce_ms` and theme persistence across machines.
+- Diff export to Markdown/PDF (plan §11 listed this; not done).
+
 ## [Unreleased]
 
 ### Added

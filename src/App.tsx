@@ -4,6 +4,8 @@ import type { PingResponse } from "@/ipc/types";
 import BrowseRoute from "@/routes/browse";
 import DiffRoute from "@/routes/diff";
 import ExportRoute from "@/routes/export";
+import SettingsRoute from "@/routes/settings";
+import WatcherToast from "@/components/watcher-toast";
 
 type ConnState =
   | { status: "idle" }
@@ -77,6 +79,8 @@ export default function App() {
         <RouteView tab={tab} />
       </main>
 
+      <WatcherToast />
+
       <footer className="flex items-center justify-between border-t border-atlas-border bg-atlas-surface px-4 py-2 text-xs text-atlas-muted">
         <span>Local data. No network.</span>
         <span>
@@ -126,15 +130,7 @@ function RouteView({ tab }: { tab: Tab }) {
     case "export":
       return <ExportRoute />;
     case "settings":
-      return <PlaceholderRoute title="Settings" body="Settings land in Phase 5." />;
+      return <SettingsRoute />;
   }
 }
 
-function PlaceholderRoute({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="mx-auto max-w-2xl rounded-lg border border-atlas-border bg-atlas-surface p-6">
-      <h1 className="text-lg font-semibold">{title}</h1>
-      <p className="mt-2 text-sm text-atlas-muted">{body}</p>
-    </section>
-  );
-}

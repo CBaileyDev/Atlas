@@ -11,6 +11,7 @@
 mod commands;
 mod error;
 mod observability;
+mod watcher;
 
 pub use error::AppError;
 
@@ -44,9 +45,14 @@ pub fn run() {
             commands::export::resolve_fqns,
             commands::export::render_export_preview,
             commands::export::write_export,
+            commands::settings::get_settings,
+            commands::settings::save_settings,
+            commands::settings::add_watcher_root,
+            commands::settings::remove_watcher_root,
         ])
-        .setup(|_app| {
+        .setup(|app| {
             tracing::info!("application setup complete");
+            watcher::spawn(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -61,6 +61,20 @@ Format: one line per deferred task. Add a phase tag and a one-sentence reason. R
   `Snippets/cheat_engine_chain.tera` aren't authored yet.
 - `[Phase 4]` Optional `dotnet build` compile-check for the
   rendered C# trainer in CI (plan §10 acceptance, marked optional).
+- `[Phase 5]` Hot-reload of `watcher_roots` without app restart —
+  needs the watcher task to listen on a control channel as well as
+  filesystem events.
+- `[Phase 5]` Tauri tray notification for `watcher:dump-detected`
+  events. Today the toast is in-window only, so a minimized window
+  misses the prompt.
+- `[Phase 5]` Settings UI fields for `watcher_debounce_ms`. The
+  backend reads it from settings.json; the UI just shows the
+  current value but doesn't let the user change it.
+- `[Phase 5]` Diff export to Markdown / PDF. Plan §11 lists this;
+  the current Diff route is read-only.
+- `[Phase 5]` End-to-end timing test for the watcher (drop a fake
+  dump folder under a watched root, assert an event fires under
+  `debounce_ms + 1 s`).
 
 ## Conventions
 

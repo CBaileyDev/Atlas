@@ -24,6 +24,21 @@
   --radius-card: 0.625rem;
 }
 
+/*
+ * Light palette. Activated by `data-theme="light"` on <html>. The
+ * tokens reuse the same names so every component stays theme-agnostic.
+ */
+[data-theme="light"] {
+  --color-atlas-bg: #f6f7fa;
+  --color-atlas-surface: #ffffff;
+  --color-atlas-surface-2: #eef0f4;
+  --color-atlas-border: #d6dae2;
+  --color-atlas-text: #1c1f26;
+  --color-atlas-muted: #5b6473;
+  --color-atlas-accent: #2b66e0;
+  --color-atlas-accent-2: #7a4cd6;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;

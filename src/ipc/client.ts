@@ -6,6 +6,7 @@
 
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
+  AtlasSettings,
   Diff,
   DumpListItem,
   ExportRequest,
@@ -115,4 +116,24 @@ export function writeExport(args: {
       output_filename: args.outputFilename,
     },
   });
+}
+
+/** Read the persisted settings. */
+export function getSettings(): Promise<AtlasSettings> {
+  return invoke<AtlasSettings>("get_settings");
+}
+
+/** Write the full settings object. */
+export function saveSettings(settings: AtlasSettings): Promise<void> {
+  return invoke<void>("save_settings", { settings });
+}
+
+/** Append a directory to the watcher roots and persist. */
+export function addWatcherRoot(root: string): Promise<AtlasSettings> {
+  return invoke<AtlasSettings>("add_watcher_root", { root });
+}
+
+/** Remove a directory from the watcher roots and persist. */
+export function removeWatcherRoot(root: string): Promise<AtlasSettings> {
+  return invoke<AtlasSettings>("remove_watcher_root", { root });
 }
