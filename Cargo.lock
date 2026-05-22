@@ -279,10 +279,12 @@ name = "atlas-parser-ue"
 version = "0.0.0"
 dependencies = [
  "atlas-parser-trait",
+ "chrono",
  "insta",
  "memmap2",
  "proptest",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
